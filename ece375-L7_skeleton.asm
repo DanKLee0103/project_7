@@ -54,6 +54,21 @@ INIT:
 
 	;Other
 
+initUSART1:; Port D set up – pin3 output
+ldi mpr, 0b00001000; Configure USART1 TXD1 (Port D, pin 3)
+out DDRD, mpr ; Set pin direction to output
+; Set Baud rate
+ldi mpr, 51
+; Set baud rate to 9,600 with f = 8 MHz
+sts UBRR1L, mpr; UBRR1H already initialized to $00
+; Enable transmitter and interrupt
+ldi mpr, (1<<TXEN1|1<<UDRIE1) ; Enable Transmitter and interrupt
+sts UCSR1B, mpr; UCSR1B in extended I/O space, use sts
+; Set asynchronous mode and frame format
+ldi mpr, (1<<UPM11|1<<UPM10|1<<UCSZ11|1<<UCSZ10)
+sts UCSR1C, mpr; UCSR1C in extended I/O space, use sts
+sei; Enable global interrupt
+
 
 ;***********************************************************
 ;*  Main Program
