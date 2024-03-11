@@ -9,8 +9,8 @@
 ;* 	2. Timer/counter1 Normal mode to create a 1.5-sec delay
 ;***********************************************************
 ;*
-;*	 Author: Enter your name
-;*	   Date: Enter Date
+;*	 Author: Noah Bean and 
+;*	   Date: 03/07/24
 ;*
 ;***********************************************************
 
@@ -99,4 +99,136 @@ STRING_END:
 ;*	Additional Program Includes
 ;***********************************************************
 .include "LCDDriver.asm"		; Include the LCD Driver
+
+/*
+Play Rock Paper Scissors between
+Two Boards
+ Communicate through the USART1 modules
+ LCD display to print messages.
+ Buttons
+◦ PD7 – Start/Ready
+◦ PD4 – Change the current gesture and iterate through the three
+gestures in order
+ Rock → Paper → Scissor → Rock → Paper → ...
+ 4 LEDs
+◦ PB7:4 – Count down indicator
+ 4 × 1.5-sec delay
+ Timer/Counter1 Normal mode
+◦ PB3:0 – Leave for LCDDriver
+*/
+
+/*
+PD2 <=> PD3
+PD3 <=> PD2
+GND <=> GND
+0
+PORTD
+1
+32
+4
+6
+G
+5
+7
+V
+TXD1
+RXD1
+RXD1
+Board 1 Board 2
+*/
+
+/*
+Frame Format
+◦ Data Frame : 8-bit data
+◦ Stop bit : 2 stop bits
+◦ Parity bit : disable
+◦ Asynchronous Operation
+ Baud Rate
+◦ 2400 bits per second
+ Control Register
+◦ Frame Format
+ UCSR1A
+ UCSR1B
+ UCSR1C
+◦ Baud Rate
+ UBRR1H
+ UBRR1L
+ Data Register
+◦ UDR1
+*/
+
+/*
+Transmit
+◦ STS UDR1, mpr
+ Receive
+◦ LDS mpr, UDR1
+*/
+
+/*
+UCSR1A
+Bit 7 – RXCn: USART Receive Complete
+Bit 6 – TXCn: USART Transmit Complete
+Bit 5 – UDREn: USART Data Register Empty
+Bit 4 – FEn: Frame Error
+Bit 3 – DORn: Data OverRun
+Bit 2 – UPEn: Parity Error
+Bit 1 – U2Xn: Double the USART Transmission Speed
+Bit 0 – MPCMn: Multi-Processor Communication Mode
+*/
+
+/*
+UCSR1B
+Bit 7 – RXCIEn: RX Complete Interrupt Enable
+Bit 6 – TXCIEn: TX Complete Interrupt Enable
+Bit 5 – UDRIEn: USART Data Register Empty Interrupt Enable
+Bit 4 – RXENn: Receiver Enable
+Bit 3 – TXENn: Transmitter Enable
+Bit 2 – UCSZn2: Character Size
+Bit 1 – RXB8n: Receive Data Bit 8
+Bit 0 – TXB8n: Transmit Data Bit 8
+*/
+
+/*
+UCSR1C
+Bit 7:6 – UMSELn1: USART Mode Select
+Bit 5:4 – UPMn1:0: Parity Mode
+Bit 3 – USBSn: Stop Bit Select
+Bit 2:1 – UCSZn1:0: Character Size
+Bit 0 – UCPOLn: Clock Polarity
+*/
+
+/*
+UMSEL1(10) 00 Asynchronous
+UPM1(10) 00 Disabled
+*/
+
+/*
+USBS1  1
+UCPOL1 0
+*/
+
+;UCSZ2,1,0 = 011
+
+/*
+Bit 15:12 – Reserved Bits
+Bit 11:0 – UBRRn11:0: USARTn Baud Rate Register
+UBRR1H
+UBRR1L
+*/
+
+/*
+mplementation – 60 pts
+◦ 10 pts for Correct USART1 configuration
+◦ 15 pts for PD7 Functionality
+ (5pt) Game Ready/Start
+ (10pt) USART1 communication
+◦ 15 pts for PD4 Functionality
+ (5pt) Select Gestures and iterate correctly
+ (10pt) USART1 communication
+◦ 10 pts for PB7-4 Functionality
+ 4 × 1.5-sec delay using T/C1 Normal
+◦ 5 pts for the Correct result (Win, Loose, or Draw)
+◦ 5 pts for LCD does not show any garbage data
+ Challenge – Extra 10 pts
+*/
 
