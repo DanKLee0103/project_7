@@ -10,7 +10,7 @@
 ;***********************************************************
 ;*
 ;*	 Author: Noah Bean and Daniel Lee
-;*	   Date: 03/07/24
+;*	   Date: 03/17/24
 ;*
 ;***********************************************************
 
@@ -20,9 +20,22 @@
 ;*  Internal Register Definitions and Constants
 ;***********************************************************
 .def    mpr = r16               ; Multi-Purpose Register
+.def	waitcnt = r17				; Wait Loop Counter
+.def	ilcnt = r18				; Inner Loop Counter
+.def	olcnt = r19				; Outer Loop Counter
+
+.equ	WTime = 100				; Time to wait in wait loop
 
 ; Use this signal code between two boards for their game ready
 .equ    SendReady = 0b11111111
+
+;*	The upper 16 characters should be located in SRAM starting at 0x0100.
+;*	The lower 16 characters should be located in SRAM starting at 0x0110.
+; -> L1 = 00, H1 = 01, L2 = 10, H2 = 01 
+.equ	L1 = $00		; LCD String 1 low 
+.equ	H1 = $01		; LCD String 1 high 
+.equ	L2 = $10		; LCD String 2 low 
+.equ	H2 = $01		; LCD String 2 high
 
 ;***********************************************************
 ;*  Start of Code Segment
@@ -35,6 +48,20 @@
 .org    $0000                   ; Beginning of IVs
 	    rjmp    INIT            	; Reset interrupt
 
+;INT0 (External Interrupt Request 0) for
+.org	$0002 					; adress for int0
+		rcall			; call 
+		reti					; return immediate
+
+;INT1 (External Interrupt Request 1) for 
+.org	$0004					; address for int1
+		rcall			    ; 
+		reti					; return immediate
+
+;INT3 (External Interrupt Request 3) for clearing both whisker counters
+.org	$0008 					; address for int3
+		rcall 		; clear 
+		reti					; return immediate
 
 .org    $0056                   ; End of Interrupt Vectors
 
@@ -43,7 +70,23 @@
 ;***********************************************************
 INIT:
 	;Stack Pointer (VERY IMPORTANT!!!!)
+; Initialize the Stack Pointer (VERY IMPORTANT!!!!)
+		ldi		mpr, low(RAMEND)
+		out		SPL, mpr		; Load SPL with low byte of RAMEND
+		ldi		mpr, high(RAMEND)
+		out		SPH, mpr		; Load SPH with high byte of RAMEND
 	;I/O Ports
+    ; Initialize Port B for output
+		ldi		mpr, $FF		; Set Port B Data Direction Register
+		out		DDRB, mpr		; for output
+		ldi		mpr, $00		; Initialize Port B Data Register
+		out		PORTB, mpr		; so all Port B outputs are low
+
+	; Initialize Port D for input
+		ldi		mpr, $00		; Set Port D Data Direction Register
+		out		DDRD, mpr		; for input
+		ldi		mpr, $FF		; Initialize Port D Data Register
+		out		PORTD, mpr		; so all Port D inputs are Tri-State
 	;USART1
 		;Set baudrate at 2400bps
 		;Enable receiver and transmitter
@@ -53,8 +96,28 @@ INIT:
 		;Set Normal mode
 
 	;Other
+		rcall LCDInit ;initialize lcd display
+		rcall LCDClr ;clear the screen
+		rcall LCDBacklightOn ; turn on the backlight
 
-initUSART1:; Port D set up – pin3 output
+		; Set the Interrupt Sense Control to falling edge
+		ldi mpr, 0b10001010 ;
+		;ldi mpr, (1<<ISC01)|(0<<ISC00)|(1<<ISC11)|(0<<ISC10)
+		;interrupts to detect a falling edge on either of the whisker inputs		 
+		sts EICRA, mpr		;External Interrupt Mask Register (EIMSK)
+
+		/*Bit 7 and Bit 6: 10 configures INT1 to trigger on the falling edge.
+		Bit 5 and Bit 4: 00 configures INT0 to trigger on the low level (logical zero).
+		Bit 3 to Bit 0: Reserved bits, usually set to zero for future compatibility.
+		*/
+		; Configure the External Interrupt Mask
+		
+		;ldi mpr, (1<<INT0)|(1<<INT1) |(1<<INT3)		;External Interrupt Mask Register (EIMSK)
+		;configure 0, 1, 3
+		ldi mpr, 0b0000_1011
+		out EIMSK, mpr
+
+;initUSART1:; Port D set up – pin3 output
 ldi mpr, 0b00001000; Configure USART1 TXD1 (Port D, pin 3)
 out DDRD, mpr ; Set pin direction to output
 ; Set Baud rate
