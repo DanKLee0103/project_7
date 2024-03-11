@@ -77,6 +77,37 @@ MAIN:
 
 	;TODO: ???
 
+/*
+• First pressing PD4 selects the Rock gesture.
+• Pressing PD4 changes the current gesture and iterates through the thee
+gestures in order. For example, Rock Ñ Paper Ñ Scissor Ñ Rock Ñ ...
+• Pressing PD4 immediately displays the choice on the user’s LCD.
+*/
+
+/*
+• You will need to configure the USART1 module on the boards. Also, al-
+though the ATmega32U4’s USART modules can communicate at rates as
+high as 2 ˆ 106 bits per second (2 Mbps), you will use the (relatively) slow
+baud rate of 2400 bits per second with double data rate.
+• Packets, which consist of 8-bit data frame with 2-stop bits and no
+parity bit, will be sent back-to-back by the USART modules. One of
+packets will be a “send ready” byte, which indicates the sender is ready to
+start a game. The others include a choice of their gestures.
+• The LCD display needs to be updated immediately whenever the user pro-
+vides input.
+• Single button press must result in a single action
+You must use the Timer/Counter1 module with NORMAL mode
+to manage the countdown unit timing. You may design your code to use
+polling or you may use interrupts (either approach is fine). You may not
+utilize any busy loop for the code delay, although it is allowed to loop if you
+are monitoring an interrupt flag.
+• Do not include switch debouncing delays of more than 150ms. A busy loop
+for debouncing is okay.
+• The LCD screen must never display symbols, gibberish, or other undesired
+output.
+*/
+
+
 		rjmp	MAIN
 
 ;***********************************************************
@@ -94,6 +125,34 @@ MAIN:
 STRING_START:
     .DB		"Welcome!"		; Declaring data in ProgMem
 STRING_END:
+
+/*
+When the CPU firsts boots, the LCD screen should show the following content
+to the user:
+Welcome!
+Please press PD7
+*/
+
+/*
+his content will remain indefinitely until the user presses the button which
+is connected to Port D, pin 7. After the button is pressed, the user’s board
+should transmit a ready signal to the opponent so that it knows the user is
+ready. Additionally, this information will be displayed on the user’s screen:
+Ready. Waiting
+for the opponent
+*/
+
+/*
+his content will remain indefinitely until the opponent player presses the PD7
+on their board and sends a ready signal to the user’s board.
+When the user’s board transmits/receives the ready signal to/from the oppo-
+nent, both the user and the opponent’s 4 LEDs are on and start counting down
+by turning off one by one at each 1.5-second. Simultaneously, their screens will
+also display:
+Game start
+*/
+
+
 
 ;***********************************************************
 ;*	Additional Program Includes
@@ -230,5 +289,33 @@ mplementation – 60 pts
 ◦ 5 pts for the Correct result (Win, Loose, or Draw)
 ◦ 5 pts for LCD does not show any garbage data
  Challenge – Extra 10 pts
+*/
+
+/*
+• Write an assembly program (for two separate mega32u4 boards) and have
+them interact.
+• Learn how to configure and use the Universal Synchronous/Asynchronous
+Receiver/Transmitter (USART) module on the ATmega32U4 microcon-
+troller.
+• Learn how to configure and use the 16-bit Timer/Counter1 module to gen-
+erate a 1.5-sec delay.
+*/
+
+/*
+Specifi-
+cally, TX and RX pins in a board need to be wired with RX and TX
+pins in the other board, respectively. GND pins in both boards also
+need to be connected.
+Board 1 Board 2
+PD2 Ø PD3
+PD3 Ø PD2
+PD.gnd Ø PD.gnd
+*/
+
+/*
+When the CPU firsts boots, the LCD screen should show the following content
+to the user:
+Welcome!
+Please press PD7
 */
 
