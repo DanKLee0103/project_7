@@ -9,7 +9,7 @@
 ;* 	2. Timer/counter1 Normal mode to create a 1.5-sec delay
 ;***********************************************************
 ;*
-;*	 Author: Noah Bean and 
+;*	 Author: Noah Bean and Daniel Lee
 ;*	   Date: 03/07/24
 ;*
 ;***********************************************************
