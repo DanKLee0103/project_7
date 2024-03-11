@@ -105,6 +105,14 @@ are monitoring an interrupt flag.
 for debouncing is okay.
 • The LCD screen must never display symbols, gibberish, or other undesired
 output.
+Students often ask about the behavior of the LEDs which are connected to
+PB1-PB3. In some cases the LCD library will illuminate one or more of those
+LEDs (even if you don’t want them to be enabled). You do not need to worry
+about this. The project guidelines do not dictate the behavior of any LEDs
+which aren’t mentioned in the project instructions. However, overwriting
+values to PB1-PB3 (e.g., during 4 LEDs countdown implementation) can
+result in the failure of using the LCD. You will need to avoid overwriting
+unused bits (PB0-PB3).
 */
 
 
