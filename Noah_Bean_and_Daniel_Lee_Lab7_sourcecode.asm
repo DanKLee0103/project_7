@@ -185,6 +185,93 @@ unused bits (PB0-PB3).
 ;*	Functions and Subroutines
 ;***********************************************************
 
+;-----------------------------------------------------------
+; Func: Template function header
+; Desc: Cut and paste this and fill in the info at the
+;		beginning of your functions
+;-----------------------------------------------------------
+DisplayLines:							; Begin a function with a label
+
+		; Save variable by pushing them to the stack
+
+		; Execute the function here
+
+		; Restore variable by popping them from the stack in reverse order
+
+		ret						; End a function with RET
+
+;-----------------------------------------------------------
+; Func: Template function header
+; Desc: Cut and paste this and fill in the info at the
+;		beginning of your functions
+;-----------------------------------------------------------
+ChangeLEDs:							; Begin a function with a label
+
+		; Save variable by pushing them to the stack
+
+		; Execute the function here
+
+		; Restore variable by popping them from the stack in reverse order
+
+		ret						; End a function with RET
+
+
+;-----------------------------------------------------------
+; Func: Template function header
+; Desc: Cut and paste this and fill in the info at the
+;		beginning of your functions
+;-----------------------------------------------------------
+EvaluateScore:							; Begin a function with a label
+
+		; Save variable by pushing them to the stack
+
+		; Execute the function here
+
+		; Restore variable by popping them from the stack in reverse order
+
+		ret						; End a function with RET
+
+
+;----------------------------------------------------------------
+; Sub:	Wait
+; Desc:	A wait loop that is 16 + 159975*waitcnt cycles or roughly
+;		waitcnt*10ms.  Just initialize wait for the specific amount
+;		of time in 10ms intervals. Here is the general eqaution
+;		for the number of clock cycles in the wait loop:
+;			(((((3*ilcnt)-1+4)*olcnt)-1+4)*waitcnt)-1+16
+;----------------------------------------------------------------
+Wait:
+		push	waitcnt			; Save wait register
+		push	ilcnt			; Save ilcnt register
+		push	olcnt			; Save olcnt register
+
+Loop:	ldi		olcnt, 224		; load olcnt register
+OLoop:	ldi		ilcnt, 237		; load ilcnt register
+ILoop:	dec		ilcnt			; decrement ilcnt
+		brne	ILoop			; Continue Inner Loop
+		dec		olcnt		; decrement olcnt
+		brne	OLoop			; Continue Outer Loop
+		dec		waitcnt		; Decrement wait
+		brne	Loop			; Continue Wait loop
+
+		pop		olcnt		; Restore olcnt register
+		pop		ilcnt		; Restore ilcnt register
+		pop		waitcnt		; Restore wait register
+		ret				; Return from subroutine
+;-----------------------------------------------------------
+; Func: Template function header
+; Desc: Cut and paste this and fill in the info at the
+;		beginning of your functions
+;-----------------------------------------------------------
+FUNC:							; Begin a function with a label
+
+		; Save variable by pushing them to the stack
+
+		; Execute the function here
+
+		; Restore variable by popping them from the stack in reverse order
+
+		ret						; End a function with RET
 ;***********************************************************
 ;*	Stored Program Data
 ;***********************************************************
