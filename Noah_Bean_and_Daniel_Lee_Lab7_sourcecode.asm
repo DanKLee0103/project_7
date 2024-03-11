@@ -132,7 +132,17 @@ unused bits (PB0-PB3).
 ;-----------------------------------------------------------
 STRING_START:
     .DB		"Welcome!"		; Declaring data in ProgMem
+.db "Please press PD7"
+.db "Ready. Waiting"
+.db "for the opponent"
+.db "Game start"
+.db "Rock"
+.db "Paper"
+.db "Scissor"
+.db "You lost"
+.db "You won!"
 STRING_END:
+
 
 /*
 When the CPU firsts boots, the LCD screen should show the following content
