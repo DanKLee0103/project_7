@@ -281,17 +281,36 @@ FUNC:							; Begin a function with a label
 ; after the .DB directive; these can help to access the data
 ;-----------------------------------------------------------
 STRING_START:
-    .DB		"Welcome!"		; Declaring data in ProgMem
-.db "Please press PD7"
-.db "Ready. Waiting"
-.db "for the opponent"
-.db "Game start"
-.db "Rock"
-.db "Paper"
-.db "Scissor"
-.db "You lost"
-.db "You won!"
+    .DB		"Welcome!        Please press PD7"		; Declaring data in ProgMem
 STRING_END:
+
+STRING_READY:
+.db "Ready. Waiting  for the opponent";DO NOT EDIT
+STRING_READY_WAIT:
+
+STRING_PLAY:
+.db "Game start      "
+STRING_PLAY_WAIT:
+
+STRING_ROCK:
+.db "Rock            "
+STRING_ROCK_END:
+
+STRING_PAPER:
+.db "Paper           "
+STRING_PAPER_END:
+
+STRING_SCISSOR:
+.db "Scissor         "
+STRING_SCISSOR_END:
+
+STRING_LOST:
+.db "You lost        "
+STRING_LOST END:
+
+STRING_WON:
+.db "You won!        "
+STRING_WON_END:
 
 
 /*
