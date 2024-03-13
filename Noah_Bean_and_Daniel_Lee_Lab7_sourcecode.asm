@@ -48,20 +48,17 @@
 .org    $0000                   ; Beginning of IVs
 	    rjmp    INIT            	; Reset interrupt
 
-;INT0 (External Interrupt Request 0) for
-.org	$0002 					; adress for int0
-		rcall			; call 
-		reti					; return immediate
+.org	$0002;For push button 4 (PIND0->PB4)
+		rcall Choose_Hand			;interrupt to cycle through rock paper scissors
+		reti
 
-;INT1 (External Interrupt Request 1) for 
-.org	$0004					; address for int1
-		rcall			    ; 
-		reti					; return immediate
+.org	$0008;For push button 7 (PIND3->PB7)
+		rcall Game_Start			;interrupt to start the game 
+		reti
 
-;INT3 (External Interrupt Request 3) for clearing both whisker counters
-.org	$0008 					; address for int3
-		rcall 		; clear 
-		reti					; return immediate
+.org	$0032
+		rcall Received			;interrupt that indicates that signal is received
+		reti
 
 .org    $0056                   ; End of Interrupt Vectors
 
@@ -69,68 +66,51 @@
 ;*  Program Initialization
 ;***********************************************************
 INIT:
-	;Stack Pointer (VERY IMPORTANT!!!!)
-; Initialize the Stack Pointer (VERY IMPORTANT!!!!)
-		ldi		mpr, low(RAMEND)
-		out		SPL, mpr		; Load SPL with low byte of RAMEND
-		ldi		mpr, high(RAMEND)
-		out		SPH, mpr		; Load SPH with high byte of RAMEND
-	;I/O Ports
-    ; Initialize Port B for output
-		ldi		mpr, $FF		; Set Port B Data Direction Register
-		out		DDRB, mpr		; for output
-		ldi		mpr, $00		; Initialize Port B Data Register
-		out		PORTB, mpr		; so all Port B outputs are low
+	INIT:	
+		;Stack Pointer (VERY IMPORTANT!!!!)
+		ldi mpr, low(RAMEND)
+		out SPL, mpr			
+		ldi mpr, high(RAMEND)	
+		out SPH, mpr
 
-	; Initialize Port D for input
-		ldi		mpr, $00		; Set Port D Data Direction Register
-		out		DDRD, mpr		; for input
-		ldi		mpr, $FF		; Initialize Port D Data Register
-		out		PORTD, mpr		; so all Port D inputs are Tri-State
+		cli
+
+		;I/O Ports
+		ldi mpr, 0b00001111
+		out DDRB, mpr
+		ldi mpr, 0b00000000
+		out PORTB, mpr
+		ldi mpr, 0b11111111; PB7 and PB4 are what matter, but we can set all (active high) initially
+		out DDRD, mpr
 	;USART1
-		;Set baudrate at 2400bps
+		;Set baudrate at 2400bps (double rate) UBRR = clock frequency/(8*baud rate)
+		ldi mpr, low(416); 8000000/(8*2400) = 416 = UBRR
+		sts UBRR1L, mpr;
+		ldi mpr, high(416);
+		sts UBRR1H, mpr;
 		;Enable receiver and transmitter
 		;Set frame format: 8 data bits, 2 stop bits
+		ldi mpr, 0b00100010; data register empty = 1; double rate = 1;
+		sts UCSR1A, mpr
+		ldi mpr, 0b10011000; receiver complete enable = 1; receiver enable, transmitter enable = 1;
+		sts UCSR1B, mpr
+		ldi mpr, 0b00001110; UCPOL1 = 00, USBS1 = 1, UCSZ = 011 (only last two bits relevant for UCSR1C), UMSEL1 = 00, UPM1 = 00 
+		sts UCSR1C, mpr; in extended I/O space, so we use sts
+
 
 	;TIMER/COUNTER1
-		;Set Normal mode
+		;Set Normal mode (WGM 13:10 = 0000)
+		ldi mpr, 0b11110000; compare output mode high for COM1A and COM1B
+		sts TCCR1A, mpr
+		ldi mpr, 0b00000101; clock selection 1024 prescale, so 101 (we want to get a big delay. if wrong, it can be EDITTED)
+		sts TCCR1B, mpr
+		sei; Enable global interrupt
 
 	;Other
 		rcall LCDInit ;initialize lcd display
 		rcall LCDClr ;clear the screen
 		rcall LCDBacklightOn ; turn on the backlight
 
-		; Set the Interrupt Sense Control to falling edge
-		ldi mpr, 0b10001010 ;
-		;ldi mpr, (1<<ISC01)|(0<<ISC00)|(1<<ISC11)|(0<<ISC10)
-		;interrupts to detect a falling edge on either of the whisker inputs		 
-		sts EICRA, mpr		;External Interrupt Mask Register (EIMSK)
-
-		/*Bit 7 and Bit 6: 10 configures INT1 to trigger on the falling edge.
-		Bit 5 and Bit 4: 00 configures INT0 to trigger on the low level (logical zero).
-		Bit 3 to Bit 0: Reserved bits, usually set to zero for future compatibility.
-		*/
-		; Configure the External Interrupt Mask
-		
-		;ldi mpr, (1<<INT0)|(1<<INT1) |(1<<INT3)		;External Interrupt Mask Register (EIMSK)
-		;configure 0, 1, 3
-		ldi mpr, 0b0000_1011
-		out EIMSK, mpr
-
-;initUSART1:; Port D set up – pin3 output
-ldi mpr, 0b00001000; Configure USART1 TXD1 (Port D, pin 3)
-out DDRD, mpr ; Set pin direction to output
-; Set Baud rate
-ldi mpr, 51
-; Set baud rate to 9,600 with f = 8 MHz
-sts UBRR1L, mpr; UBRR1H already initialized to $00
-; Enable transmitter and interrupt
-ldi mpr, (1<<TXEN1|1<<UDRIE1) ; Enable Transmitter and interrupt
-sts UCSR1B, mpr; UCSR1B in extended I/O space, use sts
-; Set asynchronous mode and frame format
-ldi mpr, (1<<UPM11|1<<UPM10|1<<UCSZ11|1<<UCSZ10)
-sts UCSR1C, mpr; UCSR1C in extended I/O space, use sts
-sei; Enable global interrupt
 
 
 ;***********************************************************
@@ -186,7 +166,53 @@ unused bits (PB0-PB3).
 ;***********************************************************
 
 ;-----------------------------------------------------------
-; Func: Template function header
+; Func: GameStart
+; Desc: Cut and paste this and fill in the info at the
+;		beginning of your functions
+;-----------------------------------------------------------
+GameStart:							; Begin a function with a label
+
+		; Save variable by pushing them to the stack
+
+		; Execute the function here
+
+		; Restore variable by popping them from the stack in reverse order
+
+		ret						; End a function with RET
+
+;-----------------------------------------------------------
+; Func: ChooseHand
+; Desc: Cut and paste this and fill in the info at the
+;		beginning of your functions
+;-----------------------------------------------------------
+ChooseHand:							; Begin a function with a label
+
+		; Save variable by pushing them to the stack
+
+		; Execute the function here
+
+		; Restore variable by popping them from the stack in reverse order
+
+		ret						; End a function with RET
+
+;-----------------------------------------------------------
+; Func: Received
+; Desc: Cut and paste this and fill in the info at the
+;		beginning of your functions
+;-----------------------------------------------------------
+Received:							; Begin a function with a label
+
+		; Save variable by pushing them to the stack
+
+		; Execute the function here
+
+		; Restore variable by popping them from the stack in reverse order
+
+		ret						; End a function with RET
+
+
+;-----------------------------------------------------------
+; Func: DisplayLines
 ; Desc: Cut and paste this and fill in the info at the
 ;		beginning of your functions
 ;-----------------------------------------------------------
@@ -201,7 +227,7 @@ DisplayLines:							; Begin a function with a label
 		ret						; End a function with RET
 
 ;-----------------------------------------------------------
-; Func: Template function header
+; Func: ChangeLEDs
 ; Desc: Cut and paste this and fill in the info at the
 ;		beginning of your functions
 ;-----------------------------------------------------------
@@ -217,9 +243,8 @@ ChangeLEDs:							; Begin a function with a label
 
 
 ;-----------------------------------------------------------
-; Func: Template function header
-; Desc: Cut and paste this and fill in the info at the
-;		beginning of your functions
+; Func: EvaluateScore
+; Desc: Checks which board has winning condition
 ;-----------------------------------------------------------
 EvaluateScore:							; Begin a function with a label
 
