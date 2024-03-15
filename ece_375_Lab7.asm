@@ -1,4 +1,3 @@
-
 ;***********************************************************
 ;*
 ;*	This is the TRANSMIT skeleton file for Lab 7 of ECE 375
@@ -21,16 +20,18 @@
 ;***********************************************************
 .def    mpr = r16               ; Multi-Purpose Register
 
-.def	display = r17			;for LED display
-.def	1.5_count = r18			;for delay
-.def	.5_count = r19			;for delay
+.def	opp_hand = r17			;for opponent hand
+.def	one_half_cnt = r18		;for delay
+.def	temp = r19				;for multi-use
+.def	hand = r23				;to see how hand is set
+.def	SendData = r24
+.def	ReceiveData = r25
+
+.equ	change_hand = 4 ;pb4
+.equ	ready_signal = 7 ;pb7
 
 ; Use this signal code between two boards for their game ready
 .equ    SendReady = 0b11111111
-.equ	LED1 = 7	
-.equ	LED2 = 6
-.equ	LED3 = 5
-.equ	LED4 = 4
 
 ;***********************************************************
 ;*  Start of Code Segment
@@ -44,11 +45,11 @@
 	    rjmp    INIT            	; Reset interrupt
 
 .org	$0002;For push button 4 (PIND0->PB4)
-		rcall Choose_Hand			;interrupt to cycle through rock paper scissors
+		rcall ChooseHand			;interrupt to cycle through rock paper scissors
 		reti
 
 .org	$0004;For push button 7 (PIND1->PB7)
-		rcall Game_Start			;interrupt to start the game 
+		rcall GameStart			;interrupt to start the game 
 		reti
 		;$0006 and $0008 occupied for transmitter and receiver
 .org	$0032
@@ -70,18 +71,18 @@ INIT:
 		cli
 
 		;I/O Ports
-		ldi mpr, 0b00001111
+		ldi mpr, 0b11110000
 		out DDRB, mpr
 		ldi mpr, 0b00000000
-		out PORTB, mpr
-		ldi mpr, 0b11111111; PB7 and PB4 are what matter, but we can set all (active high) initially
 		out DDRD, mpr
+		ldi mpr, 0b11111111; PB7 and PB4 are what matter, but we can set all (active high) initially
+		out PORTD, mpr
 	;USART1
 		;Set baudrate at 2400bps (double rate) UBRR = clock frequency/(8*baud rate)
-		ldi mpr, low(416); 8000000/(8*2400) = 416 = UBRR
-		sts UBRR1L, mpr;
 		ldi mpr, high(416);
 		sts UBRR1H, mpr;
+		ldi mpr, low(416); 8000000/(8*2400) = 416 = UBRR
+		sts UBRR1L, mpr;
 		;Enable receiver and transmitter
 		;Set frame format: 8 data bits, 2 stop bits
 		ldi mpr, 0b00100010; data register empty = 1; double rate = 1;
@@ -94,22 +95,90 @@ INIT:
 
 	;TIMER/COUNTER1
 		;Set Normal mode (WGM 13:10 = 0000)
-		ldi mpr, 0b11110000; compare output mode high for COM1A and COM1B
+		ldi mpr, 0b00000000; no non-invert or invert since normal mode
 		sts TCCR1A, mpr
 		ldi mpr, 0b00000101; clock selection 1024 prescale, so 101 (we want to get a big delay. if wrong, it can be EDITTED)
 		sts TCCR1B, mpr
-		sei; Enable global interrupt
+
+		;EICRA and EIMSK
+		ldi mpr, 0b00001010; using INT0 and INT1 (falling edge)
+		sts EICRA, mpr
+		ldi mpr, 0b0000000;start out with none available. enable them when needed.
+		out EIMSK, mpr
 
 	rcall LCDInit
 	rcall LCDBacklightOn
 
-
+	sei; Enable global interrupt
 ;***********************************************************
 ;*  Main Program
 ;***********************************************************
 MAIN:
-
+	; Enable PD7
+	ldi mpr, 0b00000010
+	out EIMSK, mpr
 	;TODO: ???
+		;welcome message
+		ldi ZL, LOW(STRING_START<<1)
+		ldi	ZH, HIGH(STRING_START<<1)
+		ldi YL, $00
+		ldi YH, $01 ;$0100 first bit of LCD
+
+		LOOP_START:
+			lpm temp, Z+
+			st Y+, temp
+			tst temp
+			breq LOOP_START_DONE
+			rjmp LOOP_START
+
+LOOP_START_DONE:
+
+		rcall LCDWrite
+
+	;Wait to transmit
+	rcall Full_Delay
+
+	;Disable PD7
+	ldi mpr, 0b00000000
+	out EIMSK, mpr
+
+	;Check if received something
+Receive_Check:
+	rcall Received
+	rcall DisplayStart
+	cpi	  ReceivedData, SendData ;just make sure that we got the right signal that we stored earlier inside of UDR1 for transmit
+	breq  Receive_Done ;if we did receive that signal, go prepare the game
+	rjmp  Receive_Check ; if not, keep looping through until we receive it
+
+Receive_Done:
+	;If received, choose hand
+	cpi	  ReceivedData, SendData
+	breq  ChooseHand
+	;If not, display message
+	;rcall DisplayStart
+
+	;Sit and wait for ready signal
+	
+
+	;Play game, enable PD4 call wait and update LED
+		;should make a game called play game or something
+
+	;After 4 LEDS, disable PD4
+	rcall Full_Delay
+	ldi   mpr, 0b00000000
+	out	  EIMSK, mpr
+	;Transmit my hand
+	ldi SendData, hand		;load hand into data 
+	rcall Transmit
+	;Receive opponent hand
+	rcall Received
+	ldi opp_hand, ReceiveData
+
+	;Check if I won or lost
+	;Display that with a wait.
+	rcall Full_Delay
+
+
 
 	;need some way to know that both players are ready and then call GameStart if both players ready
 
@@ -127,10 +196,66 @@ MAIN:
 GameStart:							; Begin a function with a label
 
 		; Save variable by pushing them to the stack
-		
+		push	mpr						; save mpr
+		in		mpr, SREG				; save program state
+		push	mpr
+
 		; Execute the function here
+		ldi ZL, LOW(STRING_START<<1)
+		ldi	ZH, HIGH(STRING_START<<1)
+		ldi YL, $00
+		ldi YH, $01 ;$0100 first bit of LCD
+
+		LOOP_READY:
+			lpm temp, Z+
+			st Y+, temp
+			tst temp
+			breq LOOP_READY_DONE
+			rjmp LOOP_READY
+
+LOOP_READY_DONE:
+		rcall LCDWrite
+		ldi	  SendData, SendReady
+		rcall Transmit		;This sends the signal that you are ready and triggers the interrupt $0032 (I believe)
+		; Restore variable by popping them from the stack in reverse order
+		pop		mpr
+		out		SREG, mpr
+		pop		mpr
+
+		ret						; End a function with RET
+
+;-----------------------------------------------------------
+; Func: DisplayStart
+; Desc: Cut and paste this and fill in the info at the
+;		beginning of your functions
+;-----------------------------------------------------------
+DisplayStart:							; Begin a function with a label
+
+		; Save variable by pushing them to the stack
+		push	mpr						; save mpr
+		in		mpr, SREG				; save program state
+		push	mpr
+
+		; Execute the function here
+		ldi ZL, LOW(STRING_PLAY<<1)
+		ldi	ZH, HIGH(STRING_PLAY<<1)
+		ldi YL, $00
+		ldi YH, $01 ;$0100 first bit of LCD
+
+		LOOP_PLAY:
+			lpm temp, Z+
+			st Y+, temp
+			tst temp
+			breq LOOP_PLAY_DONE
+			rjmp LOOP_PLAY
+
+LOOP_PLAY_DONE:
+		rcall LCDWrite
 
 		; Restore variable by popping them from the stack in reverse order
+		pop		mpr
+		out		SREG, mpr
+		pop		mpr
 
 		ret						; End a function with RET
 
@@ -142,10 +267,18 @@ GameStart:							; Begin a function with a label
 ChooseHand:							; Begin a function with a label
 
 		; Save variable by pushing them to the stack
+		push	mpr						; save mpr
+		in		mpr, SREG				; save program state
+		push	mpr
 
 		; Execute the function here
+ChangeHand:
+		cpi 
 
 		; Restore variable by popping them from the stack in reverse order
+		pop		mpr
+		out		SREG, mpr
+		pop		mpr
 
 		ret						; End a function with RET
 
@@ -164,8 +297,8 @@ Transmit:							; Begin a function with a label
 		sbrs	mpr, UDRE1		; wait until UDRE1 is empty and is set to sts UDR1,mpr
 		rjmp	Transmit
 
-		ldi	mpr, SendReady		;signal that let's other board know it's ready
-		sts UDR1, mpr			;store signal data into UDR1 to let program know transmit buffer is full (clears UDRE1)
+		;mov	mpr, SendData		;signal that let's other board know it's ready
+		sts UDR1, SendData			;store signal data into UDR1 to let program know transmit buffer is full (clears UDRE1)
 
 		;eifr or eimsk? might need it
 
@@ -187,15 +320,15 @@ Received:							; Begin a function with a label
 		in		mpr, SREG				; save program state
 		push	mpr
 
-		lds mpr, UDR1		;UDR1 should be $FF if received SendReady signal from other device
+		lds ReceiveData, UDR1		;UDR1 should be $FF if received SendReady signal from other device
 
-		cpi	mpr, SendReady ;just make sure that we got the right signal that we stored earlier inside of UDR1 for transmit
-		breq Receive_Ready ;if we did receive that signal, go prepare the game
-		rjmp Received ; if not, keep looping through until we receive it
+		;cpi	mpr, SendData ;just make sure that we got the right signal that we stored earlier inside of UDR1 for transmit
+		;breq Receive_Ready ;if we did receive that signal, go prepare the game
+		;rjmp Received ; if not, keep looping through until we receive it
 
 Receive_Ready:
 
-		ldi		mpr, 0b00000010		; enable interrupt to rotate hands
+		ldi		mpr, 0b00000001		; enable interrupt to rotate hands (INT0)
 		out		EIMSK, mpr
 
 		; Restore variable by popping them from the stack in reverse order
@@ -214,33 +347,17 @@ Receive_Ready:
 DisplayLines:							; Begin a function with a label
 
 		; Save variable by pushing them to the stack
-
-		; Execute the function here
-
-		; Restore variable by popping them from the stack in reverse order
-
-		ret						; End a function with RET
-
-;-----------------------------------------------------------
-; Func: ChangeLEDs
-; Desc: Cut and paste this and fill in the info at the
-;		beginning of your functions
-;-----------------------------------------------------------
-ChangeLEDs:							; Begin a function with a label
-
 		push	mpr						; save mpr
 		in		mpr, SREG				; save program state
 		push	mpr
 
-		clr		mpr
-		in		mpr, PORTB				; PORTB to mpr
+		; Execute the function here
 
 
 		; Restore variable by popping them from the stack in reverse order
 		pop		mpr
 		out		SREG, mpr
 		pop		mpr
-
 		ret						; End a function with RET
 
 
@@ -251,11 +368,16 @@ ChangeLEDs:							; Begin a function with a label
 EvaluateScore:							; Begin a function with a label
 
 		; Save variable by pushing them to the stack
+		push	mpr						; save mpr
+		in		mpr, SREG				; save program state
+		push	mpr
 
 		; Execute the function here
 
 		; Restore variable by popping them from the stack in reverse order
-
+		pop		mpr
+		out		SREG, mpr
+		pop		mpr
 		ret						; End a function with RET
 
 
@@ -264,39 +386,40 @@ EvaluateScore:							; Begin a function with a label
 ; Desc:	A full delay for six seconds that turns off each LED light every 1.5 seconds.
 ;----------------------------------------------------------------
 Full_Delay:
-		push	1.5_cnt			; Save 1.5_cnt register
-		push	.5_cnt			; Save .5_cnt register
+		push	mpr						; save mpr
+		in		mpr, SREG				; save program state
+		push	mpr
+		push	one_half_cnt			; Save 1.5_cnt register
 
 		ldi		mpr, $F0		;turns on the first four LED (7-4)
 		out		PORTB, mpr
+	
+		ldi		one_half_cnt, 4		; load 1.5_cnt register so there is 1.5second delay between each LED turn off (1.5*4 = 6)
 
-1.5_Loop:	ldi		1.5_cnt, 4		; load 1.5_cnt register so there is 1.5second delay between each LED turn off (1.5*4 = 6)
-
-	.5_Loop:	ldi		.5_cnt, 3		;load .5_cnt three times (.5*3 = 1.5) It's split to three because of max value problems with delay (max = 65535 but 1.5 second = ... something may not be right here)
-				;need to figure these values out
-				ldi		mpr, $00
+One_Half_Loop:				
+				;65535-(1.5/(1024*0.000000125)) = 53816 = $D238
+				ldi		mpr, $D2
 				sts		TCNT1H, mpr
-				ldi		mpr, $00
+				ldi		mpr, $38
 				sts		TCNT1L, mpr
 
-	Check_.5Loop:
-					in		mpr, TIFR1
+	Check_One_Half_Loop:
+					lds		mpr, TIFR1
 					cpi	mpr, $01			;compare if TOV1 flag high (reach max 65535)
-					brne	Check_.5Loop	;if not, Check_.5LOOP continuosuly
+					brne	Check_One_Half_Loop	;if not, Check_1.5LOOP continuosuly
 
-					ldi		mpr, 0b00000001			;
-					out		TIFR1, mpr
-
-					dec		.5_cnt			; decrement .5_cnt
-					brne	.5_Loop			; Continue .5_Loop
+					ldi		mpr, $01		;let the system know that it hit max value or not
+					sts		TIFR1, mpr
 
 					in		mpr, PORTB		;put PORTB into mpr
 					lsr		mpr				;then logical shift to the right, so everything shifts one and the 1 in the leftmost 1 becomes 0 each 1.5 seconds
-					dec		1.5_cnt			; decrement 1.5_cnt
-					brne	1.5_Loop		; Continue 1.5_Loop if 1.5_cnt not == 0
+					dec		one_half_cnt			; decrement 1.5_cnt
+					brne	One_Half_Loop		; Continue 1.5_Loop if 1.5_cnt not == 0
 
-		pop		1.5_cnt		; Restore 1.5_cnt register
-		pop		.5_cnt		; Restore .5_cnt register
+		pop		one_half_cnt		; Restore 1.5_cnt register
+		pop		mpr
+		out		SREG, mpr
+		pop		mpr
 		ret				; Return from subroutine
 
 ;***********************************************************
@@ -333,7 +456,7 @@ STRING_SCISSOR_END:
 
 STRING_LOST:
 .db "You lost        "
-STRING_LOST END:
+STRING_LOST_END:
 
 STRING_WON:
 .db "You won!        "
@@ -347,119 +470,3 @@ STRING_DRAW_END:
 ;*	Additional Program Includes
 ;***********************************************************
 .include "LCDDriver.asm"		; Include the LCD Driver
-
-/*
-Play Rock Paper Scissors between
-Two Boards
-? Communicate through the USART1 modules
-? LCD display to print messages.
-? Buttons
-? PD7 – Start/Ready
-? PD4 – Change the current gesture and iterate through the three
-gestures in order
-? Rock ? Paper ? Scissor ? Rock ? Paper ? ...
-? 4 LEDs
-? PB7:4 – Count down indicator
-? 4 × 1.5-sec delay
-? Timer/Counter1 Normal mode
-? PB3:0 – Leave for LCDDriver
-*/
-
-/*
-PD2 <=> PD3
-PD3 <=> PD2
-GND <=> GND
-0
-PORTD
-1
-32
-4
-6
-G
-5
-7
-V
-TXD1
-RXD1
-RXD1
-Board 1 Board 2
-*/
-
-/*
-Frame Format
-? Data Frame : 8-bit data
-? Stop bit : 2 stop bits
-? Parity bit : disable
-? Asynchronous Operation
-? Baud Rate
-? 2400 bits per second
-? Control Register
-? Frame Format
-? UCSR1A
-? UCSR1B
-? UCSR1C
-? Baud Rate
-? UBRR1H
-? UBRR1L
-? Data Register
-? UDR1
-*/
-
-/*
-Transmit
-? STS UDR1, mpr
-? Receive
-? LDS mpr, UDR1
-*/
-
-/*
-UCSR1A
-Bit 7 – RXCn: USART Receive Complete
-Bit 6 – TXCn: USART Transmit Complete
-Bit 5 – UDREn: USART Data Register Empty
-Bit 4 – FEn: Frame Error
-Bit 3 – DORn: Data OverRun
-Bit 2 – UPEn: Parity Error
-Bit 1 – U2Xn: Double the USART Transmission Speed
-Bit 0 – MPCMn: Multi-Processor Communication Mode
-*/
-
-/*
-UCSR1B
-Bit 7 – RXCIEn: RX Complete Interrupt Enable
-Bit 6 – TXCIEn: TX Complete Interrupt Enable
-Bit 5 – UDRIEn: USART Data Register Empty Interrupt Enable
-Bit 4 – RXENn: Receiver Enable
-Bit 3 – TXENn: Transmitter Enable
-Bit 2 – UCSZn2: Character Size
-Bit 1 – RXB8n: Receive Data Bit 8
-Bit 0 – TXB8n: Transmit Data Bit 8
-*/
-
-/*
-UCSR1C
-Bit 7:6 – UMSELn1: USART Mode Select
-Bit 5:4 – UPMn1:0: Parity Mode
-Bit 3 – USBSn: Stop Bit Select
-Bit 2:1 – UCSZn1:0: Character Size
-Bit 0 – UCPOLn: Clock Polarity
-*/
-
-/*
-UMSEL1(10) 00 Asynchronous
-UPM1(10) 00 Disabled
-*/
-
-/*
-USBS1  1
-UCPOL1 0
-*/
-
-;UCSZ2,1,0 = 011
-
-/*
-Bit 15:12 – Reserved Bits
-Bit 11:0 – UBRRn11:0: USARTn Baud Rate Register
-UBRR1H
-UBRR1L
-*/
